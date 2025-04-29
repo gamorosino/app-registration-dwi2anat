@@ -1,4 +1,4 @@
-# Registration DWIs to Anatomical MRI image
+# DWI-to-Anatomical MRI Registration
 
 A reproducible and automated pipeline to align diffusion-weighted imaging (DWI) data to anatomical MRI references (e.g., T1-weighted) using configurable transformation stages. The workflow includes b=0 extraction, multi-stage registration (translation, rigid, affine, nonlinear), and full-volume transformation, ensuring spatial alignment suitable for tractography and cross-modal analyses.
 
