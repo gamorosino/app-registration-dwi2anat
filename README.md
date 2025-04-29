@@ -34,7 +34,7 @@ This pipeline extracts the b=0 volume from a 4D DWI dataset, registers it to a s
 3. Upload required inputs:
    - 4D DWI NIfTI file (`.nii.gz`)
    - Associated `.bval` and `.bvec` files
-   - An anatomical image (e.g., T1w, T2w, parcellation, mask, or FA)
+   - An anatomical image (e.g., T1w, T2w, or FA)
    - Optionally, a `config.json` to override default parameters
 4. Submit the job. Output will include registered DWI images and associated transformation matrices and fields.
 
