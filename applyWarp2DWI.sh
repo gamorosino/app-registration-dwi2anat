@@ -102,6 +102,9 @@ echo "pre-affine: " $affine1
 
 [ -z ${compute_DT_Scalars} ] && { compute_DT_Scalars=0 ; }
 
+warp_cmd=''
+[ ${warp} == "None" ] || { warp_cmd="-t ${warp}" ;}
+
 #0. Generate an identity (deformation field) warp using the image you wish to warp (“source”; or “moving” image):
 #.mif
 warpinit ${moving} identity_warp[].nii -force
@@ -118,7 +121,7 @@ warpinit ${moving} identity_warp[].nii -force
 [ -z ${affine1} ] || { pre_affine=" -t [${affine1},1]  " ; }
 
 for i in {0..2}; do
-    antsApplyTransforms -d 3 -e 0 -i identity_warp${i}.nii -o mrtrix_warp${i}.nii -r ${fixed} -t ${warp}  -t ${affine}  ${pre_affine}   #--default-value 2147483647
+    antsApplyTransforms -d 3 -e 0 -i identity_warp${i}.nii -o mrtrix_warp${i}.nii -r ${fixed} ${warp_cmd}  -t ${affine}  ${pre_affine}   #--default-value 2147483647
 done
 
 #3. Correct the warp
