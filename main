@@ -1,0 +1,232 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=1,vmem=8g,walltime=2:00:00
+#PBS -N app-align-DWI
+#PBS -V
+
+
+#set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/"
+applyWarp2DWI=${SCRIPT_DIR}./applyWarp2DWI.sh
+
+
+### === Load parameters from config.json ===
+lmax=$(jq -r .lmax config.json)
+dwi=$(jq -r '.dwi' config.json)
+bvals=`jq -r '.bvals' config.json`
+bvecs=`jq -r '.bvecs' config.json`
+transf_type=$(jq -r .transformation config.json)
+settings=$(jq -r .settings config.json)
+
+# Optional anatomical fields
+t1w=$(jq -r .t1 config.json)
+t2w=$(jq -r .t2 config.json)
+parc=$(jq -r .parc config.json)
+mask=$(jq -r .mask config.json)
+fa=$(jq -r .fa config.json)
+
+# === Assign first available anatomical reference ===
+if [ -n "$t1w" ] && [ "$t1w" != "null" ]; then
+    anat=$t1w
+elif [ -n "$t2w" ] && [ "$t2w" != "null" ]; then
+    anat=$t2w
+elif [ -n "$parc" ] && [ "$parc" != "null" ]; then
+    anat=$parc
+elif [ -n "$mask" ] && [ "$mask" != "null" ]; then
+    anat=$mask
+elif [ -n "$fa" ] && [ "$fa" != "null" ]; then
+    anat=$fa
+else
+    echo "Error: No valid anatomical reference found in config.json" >&2
+    exit 1
+fi
+
+# === Extract B0 ===
+mkdir ${SCRIPT_DIR}/b0/
+b0=${SCRIPT_DIR}/b0/b0.nii.gz
+
+singularity exec -e docker://brainlife/dipy:1.4.1 \
+            python ${SCRIPT_DIR}/extract_b0.py  ${dwi} \
+                                                ${b0} \
+                                                ${bvals}
+dwi_moving=b0
+
+
+### === Set ANTs registration parameters ===
+
+case $transf_type in
+  "translation")
+    echo "Performing rigid registration"
+
+    transl=1
+    rigid=0
+    affine=0
+    nonlin=0
+
+    ;;
+  "rigid")
+    echo "Performing rigid registration"
+
+    transl=1
+    rigid=1
+    affine=0
+    nonlin=0
+
+    ;;
+  "affine")
+    echo "Performing rigid registration"
+
+    transl=1
+    rigid=1
+    affine=1
+    nonlin=0
+    ;;
+  "nonlinear")
+    echo "Performing rigid registration"
+    
+    transl=1
+    rigid=1
+    affine=1
+    nonlin=1
+    ;;
+  *)
+    echo "Invalid transformation type"
+    exit 1
+    ;;
+esac
+
+
+#default params
+thresold=1.e-8
+diffeo="SyN[0.25]"
+
+case $settings in
+  "1")
+    echo "Using one-level registration"
+    its=10000x0x0
+    percentage=0.1
+    syn="100x0x0,0,5" 
+    sigma=1x0.5x0vox
+    shrink=4x2x1
+    sigma_lin=4x2x1vox
+    shrink0=6x4x2
+    shrink_lin=3x2x1
+    ;;
+  "2")
+    its=10000x10000x0
+    percentage=0.3
+    syn="100x100x0,-0.01,5"
+    sigma=1x0.5x0vox
+    shrink=4x2x1
+    sigma_lin=4x2x1vox
+    shrink0=6x4x2
+    shrink_lin=3x2x1
+    ;;
+  "3")
+    its=10000x111110x11110
+    percentage=0.3
+    syn="100x100x30,-0.01,5"
+    sigma=1x0.5x0vox
+    shrink=4x2x1
+    sigma_lin=4x2x1vox
+    shrink0=6x4x2
+    shrink_lin=3x2x1
+    ;;
+  "4")
+    echo "Using four-level registration"
+    its=10000x10000x10000
+    percentage=0.3
+    syn="100x80x50x20,${thresold},10"
+    sigma=2x1x0.5x0vox
+    shrink=8x4x2x1
+    sigma_lin=4x2x1vox
+    shrink0=6x4x2
+    shrink_lin=3x2x1
+    ;;
+  *)
+    echo "Invalid registration setting"
+    exit 1
+    ;;
+esac
+
+f=${anat}
+m=${dwi_moving}
+stage0="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t translation[ 0.1 ] -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink0 -l 1"
+tage1="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t rigid[ 0.1 ]       -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink_lin -l 1"
+stage2="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t affine[ 0.1 ]      -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink_lin -l 1"
+stage3="-m mattes[  $f, $m, 0.5 , 32 ] -m cc[  $f, $m, 0.5 , 4 ]   -c [ $syn ]  -t $diffeo -s $sigma -f $shrink -l 1 -u 1 -z 1 -u 1"
+
+[ ${transl} -eq 0 ]  && { stage0='';} || { diffeopost="trasl"; }
+[ ${rigid}  -eq 0 ]  && { stage1='';} || { diffeopost="rigid"; }
+[ ${affine} -eq 0 ]  && { stage2='';} || { diffeopost="affine"; }
+[ ${nonlin} -eq 0 ]  && { stage3='';} || { diffeopost=$( echo $diffeo | cut -d "[" -f1 );}
+
+### === Output paths ===
+ANTs_outputs="ANTs_outputs"
+mkdir -p ${ANTs_outputs}
+
+### === Perform ANTs registration ===
+echo "Running ANTs registration..."
+filenamem=$(basename "${dwi_moving}")
+name_noext="${filenamem%.nii.gz}"     # remove .nii.gz if present
+name_noext="${name_noext%.nii}"      # remove .nii if present
+ANTsprefix=${ANTs_outputs}/${name_noext}_${diffeopost}
+ANTsdiff=${ANTsprefix}"diff.nii.gz"
+ANTsinv=${ANTsprefix}"inv.nii.gz"
+
+echo "    antsRegistration \
+    -d 3 \
+    -r [${anat},${dwi_moving},1] \
+    $stage0\
+    $stage1\
+    $stage2\
+    $stage3\
+    $ref_command_w \
+    -o [${ANTsprefix},${ANTsdiff},${ANTsinv}] \
+    --verbose"
+
+singularity exec -e docker://brainlife/ants:2.2.0-1bc \
+    antsRegistration \
+    -d 3 \
+    -r [${anat},${dwi_moving},1] \
+    $stage0\
+    $stage1\
+    $stage2\
+    $stage3\
+    $ref_command_w \
+    -o [${ANTsprefix},${ANTsdiff},${ANTsinv}] \
+    --verbose
+
+### === Apply transformation to moving image using ANTs ===
+  WarpField=${ANTsprefix}"1Warp.nii.gz"
+  InverseWarpField=${ANTsprefix}"1InverseWarp.nii.gz"
+  AffineMat=${ANTsprefix}"0GenericAffine.mat"
+  fa_warped=${ANTsprefix}"warped.nii.gz"
+  
+	singularity exec -e docker://brainlife/ants:2.2.0-1bc \
+    antsApplyTransforms -d 3 \
+                        -i ${dwi_moving} \
+                        -r ${anat} \
+                        -t  ${WarpField} \
+                        -t  ${AffineMat} \
+			-o ${fa_warped}
+
+### === format output in brainlife datatype style ===
+                
+transformations=${SCRIPT_DIR}'/transformations/'
+mkdir -p ${transformations}
+if [ ${nonlin} -eq 0 ]; then 
+	WarpField='None'
+else
+	cp $WarpField ${transformations}'/warp.nii.gz'
+	cp $InverseWarpField ${transformations}'/inverse-warp.nii.gz'
+fi
+singularity exec -e docker://brainlife/ants:2.2.0-1bc ConvertTransformFile 3 $AffineMat  ${transformations}'/affine.txt'
+ 
+### === Apply the transformation to DWI using warpinit+antsApplyTransforms+warpcorrect+mrtransform ===
+
+outputdir=${SCRIPT_DIR}'/transformed'
+mkdir -p ${outputdir}
+dwi_output=${outputdir}'/'$( basename ${dwi} )
+singularity exec -e docker://brainlife/mrtrix3:3.0.3 \
+bash ${applyWarp2DWI} ${dwi} ${bvals} ${bvecs} ${anat}  ${AffineMat}  ${WarpField} ${dwi_output}
