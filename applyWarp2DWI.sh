@@ -19,6 +19,23 @@
 SCRIPT=`realpath -s $0`
 scriptdir=`dirname $SCRIPT`
 
+remove_ext () {
+
+	#   based on remove_ext function from FSL - FMRIB's Software Library
+	#	http://www.fmrib.ox.ac.uk/fsl
+	#
+
+
+	local lst="";
+	for fn in $@ ; do
+		# for the ones at the end of the line
+		local f=`echo "$fn" | sed 's/\.hdr\.gz$//' | sed 's/\.img\.gz$//' | sed 's/\.hdr$//' | sed 's/\.img$//' | sed 's/\.nii.gz$//' | sed 's/\.nii$//' | sed 's/\.mnc.gz$//' | sed 's/\.mnc$//' | sed 's/\.$//'`;
+			# for the ones in the middle of the line
+		local f=`echo "$f" | sed 's/\.hdr\.gz[ 	]/ /g' | sed 's/\.img\.gz[ 	]/ /g' | sed 's/\.hdr[ 	]/ /g' | sed 's/\.img[ 	]/ /g' | sed 's/\.nii\.gz[ 	]/ /g' | sed 's/\.nii[ 	]/ /g' | sed 's/\.mnc\.gz[ 	]/ /g' | sed 's/\.mnc[ 	]/ /g' |sed 's/\.[ 	]/ /g'`;
+		local lst="$lst $f";
+	done
+	echo $lst;
+}
 
 fextension () {
                 ############# ############# ############# ############# ############# ############# 
