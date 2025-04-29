@@ -102,8 +102,6 @@ echo "pre-affine: " $affine1
 
 [ -z ${compute_DT_Scalars} ] && { compute_DT_Scalars=0 ; }
 
-source ${scriptdir}/libraries/DWIlib.sh
-
 #0. Generate an identity (deformation field) warp using the image you wish to warp (“source”; or “moving” image):
 #.mif
 warpinit ${moving} identity_warp[].nii -force
