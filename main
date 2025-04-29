@@ -30,10 +30,6 @@ if [ -n "$t1w" ] && [ "$t1w" != "null" ]; then
     anat=$t1w
 elif [ -n "$t2w" ] && [ "$t2w" != "null" ]; then
     anat=$t2w
-elif [ -n "$parc" ] && [ "$parc" != "null" ]; then
-    anat=$parc
-elif [ -n "$mask" ] && [ "$mask" != "null" ]; then
-    anat=$mask
 elif [ -n "$fa" ] && [ "$fa" != "null" ]; then
     anat=$fa
 else
