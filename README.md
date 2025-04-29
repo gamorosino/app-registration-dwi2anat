@@ -6,8 +6,9 @@ A reproducible and automated pipeline to align diffusion-weighted imaging (DWI) 
 
 ## Author
 
-**Gabriele Amorosino**  
-Email: [gabriele.amorosino@utexas.edu](mailto:gabriele.amorosino@utexas.edu)
+**Gabriele Amorosino**
+(email: [gabriele.amorosino@utexas.edu](mailto:gabriele.amorosino@utexas.edu))
+
 ---
 
 ## Description
