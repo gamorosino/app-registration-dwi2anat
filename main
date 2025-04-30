@@ -39,7 +39,7 @@ fi
 
 # === Extract B0 ===
 mkdir ${SCRIPT_DIR}/b0/
-b0=${SCRIPT_DIR}/b0/b0.nii.gz
+b0=${SCRIPT_DIR}/b0/dwi.nii.gz
 
 singularity exec -e docker://brainlife/dipy:1.4.1 \
             python ${SCRIPT_DIR}/extract_b0.py  ${dwi} \
