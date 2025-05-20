@@ -148,7 +148,7 @@ esac
 f=${anat}
 m=${dwi_moving}
 stage0="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t translation[ 0.1 ] -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink0 -l 1"
-tage1="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t rigid[ 0.1 ]       -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink_lin -l 1"
+stage1="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t rigid[ 0.1 ]       -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink_lin -l 1"
 stage2="-m mattes[  $f, $m , 1 , 32, regular, $percentage ] -t affine[ 0.1 ]      -c [$its,$thresold,20] -u 1 -s $shrink_lin -f $shrink_lin -l 1"
 stage3="-m mattes[  $f, $m, 0.5 , 32 ] -m cc[  $f, $m, 0.5 , 4 ]   -c [ $syn ]  -t $diffeo -s $sigma -f $shrink -l 1 -u 1 -z 1 -u 1"
 
