@@ -197,15 +197,15 @@ singularity exec -e docker://brainlife/ants:2.2.0-1bc \
   WarpField=${ANTsprefix}"1Warp.nii.gz"
   InverseWarpField=${ANTsprefix}"1InverseWarp.nii.gz"
   AffineMat=${ANTsprefix}"0GenericAffine.mat"
-  fa_warped=${ANTsprefix}"warped.nii.gz"
-  
-	singularity exec -e docker://brainlife/ants:2.2.0-1bc \
+  b0_warped=${ANTsprefix}"warped.nii.gz"
+  [ ${nonlin} -eq 1 ]  && { warp_cmd="-t  ${WarpField}"; }
+  singularity exec -e docker://brainlife/ants:2.2.0-1bc \
     antsApplyTransforms -d 3 \
                         -i ${dwi_moving} \
                         -r ${anat} \
-                        -t  ${WarpField} \
+                        ${warp_cmd} \
                         -t  ${AffineMat} \
-			-o ${fa_warped}
+			-o ${b0_warped}
 
 ### === format output in brainlife datatype style ===
                 
