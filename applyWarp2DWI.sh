@@ -153,7 +153,7 @@ output_mif=$( remove_ext ${output_nii} )_warped.mif
 bvecs_warped=$( remove_ext ${output_nii} ).bvecs
 bvals_warped=$( remove_ext ${output_nii} ).bvals
 
-[ $( exists ${output_mif} ) -eq 0 ]  && { mrtransform ${moving_mif} ${output_mif} -warp mrtrix_warp_corrected.mif -force ; } # -fslgrad  ${bvecs} ${bvals}  #-export_grad_fsl ${bvecs_warped} ${bvals_warped}
+[ $( exists ${output_mif} ) -eq 0 ]  && { mrtransform ${moving_mif} ${output_mif} -warp mrtrix_warp_corrected.mif -force  -reorient_fod no ; } # -fslgrad  ${bvecs} ${bvals}  #-export_grad_fsl ${bvecs_warped} ${bvals_warped}
 
 ( [ $( exists ${output_nii} ) -eq 0 ] || [ $( exists ${bvecs_warped} ) -eq 0 ] || [ $( exists ${bvals_warped} ) -eq 0 ] )  \
 						&& { mrconvert ${output_mif}  ${output_nii} -export_grad_fsl  ${bvecs_warped} ${bvals_warped} -force ; rm ${output_mif}; }
