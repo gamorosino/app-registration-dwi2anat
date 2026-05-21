@@ -170,8 +170,6 @@ from scipy.linalg import polar
 bvecs = np.loadtxt("${tmp_bvecs}")
 
 # read affine matrix from ITK file
-A = []
-
 with open("${affine}", "r") as f:
     for line in f:
         if line.startswith("Parameters:"):
@@ -184,7 +182,7 @@ A = np.array(vals).reshape(3,3)
 R, _ = polar(A)
 
 # rotate gradients
-bvecs_rot = R @ bvecs
+bvecs_rot = np.dot(R, bvecs)
 
 # normalize non-zero vectors
 norms = np.linalg.norm(bvecs_rot, axis=0)
