@@ -162,32 +162,30 @@ mrconvert ${output_mif} ${output_nii} \
     -force
 
 echo "DEBUG affine path: ${affine}"
-ls -lh "${affine}"
-echo "DEBUG first lines of affine:"
-head -n 8 "${affine}"
 
-echo "DEBUG tmp_bvecs path: ${tmp_bvecs}"
-ls -lh "${tmp_bvecs}"
-head -n 3 "${tmp_bvecs}"
+mkdir -p ./temp
+
+echo "Converting affine to plain text..."
+
+singularity exec -e docker://brainlife/ants:2.2.0-1bc \
+    ConvertTransformFile 3 \
+    ${affine} \
+    ./temp/affine.txt
+
+echo "DEBUG converted affine:"
+cat ./temp/affine.txt
 
 python << EOF
 
 import numpy as np
 import os
 
-affine_path = "${affine}"
+affine_path = "./temp/affine.txt"
 bvecs_path = "${tmp_bvecs}"
 out_path = "${bvecs_warped}"
 
 print("Reading affine:", affine_path)
 print("Reading bvecs:", bvecs_path)
-print("Writing rotated bvecs:", out_path)
-
-if not os.path.exists(affine_path):
-    raise RuntimeError("Affine file does not exist: " + affine_path)
-
-if not os.path.exists(bvecs_path):
-    raise RuntimeError("Temporary bvecs file does not exist: " + bvecs_path)
 
 # load bvecs
 bvecs = np.loadtxt(bvecs_path)
@@ -198,56 +196,51 @@ if bvecs.shape[0] != 3 and bvecs.shape[1] == 3:
 if bvecs.shape[0] != 3:
     raise RuntimeError("Expected bvecs shape 3 x N, got: " + str(bvecs.shape))
 
-# read ITK affine
+# read affine
 vals = None
 
 with open(affine_path, "r") as f:
-    txt = f.read()
+    for line in f:
+        line = line.strip()
 
-for line in txt.splitlines():
-    line_clean = line.strip()
-    if line_clean.startswith("Parameters:"):
-        parts = line_clean.split()
-        vals = [float(x) for x in parts[1:10]]
-        break
+        if line.startswith("Parameters:"):
+            vals = [float(x) for x in line.split()[1:10]]
+            break
 
 if vals is None:
-    print("Affine file content begins:")
-    print(txt[:1000])
-    raise RuntimeError("Could not find 'Parameters:' line in affine file")
+    raise RuntimeError("Could not find affine parameters")
 
-A = np.array(vals).reshape(3, 3)
+A = np.array(vals).reshape(3,3)
 
-print("Affine 3x3:")
+print("Affine matrix:")
 print(A)
 
-# extract pure rotation from affine using NumPy only
+# extract pure rotation
 U, s, Vt = np.linalg.svd(A)
 R = np.dot(U, Vt)
 
-# avoid improper rotation/reflection
+# fix reflection if needed
 if np.linalg.det(R) < 0:
     U[:, -1] *= -1
     R = np.dot(U, Vt)
 
 print("Rotation matrix:")
 print(R)
-print("det(R):", np.linalg.det(R))
 
-# rotate gradients
+# rotate bvecs
 bvecs_rot = np.dot(R, bvecs)
 
-# normalize non-zero vectors
+# normalize
 norms = np.linalg.norm(bvecs_rot, axis=0)
 mask = norms > 1e-6
-bvecs_rot[:, mask] = bvecs_rot[:, mask] / norms[mask]
 
-# keep b0s exactly zero
+bvecs_rot[:, mask] /= norms[mask]
 bvecs_rot[:, ~mask] = 0.0
 
+# save
 np.savetxt(out_path, bvecs_rot, fmt="%.10f")
 
-print("Done rotating bvecs")
+print("Rotated bvecs written to:", out_path)
 
 EOF
 rm ${tmp_bvecs}
