@@ -3,6 +3,35 @@
 #PBS -N app-registration-dwi2anat
 #PBS -V
 
+# functions
+
+setITKthreads () {
+    local threads=$1
+    export OMP_NUM_THREADS=$threads
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$threads
+    export SINGULARITYENV_OMP_NUM_THREADS=$threads
+    export SINGULARITYENV_ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$threads
+}
+
+
+estimateFreeCores () {
+    # Force English locale so top uses dots (.) instead of commas (,) for decimals
+    local cpu_load
+    cpu_load=$(LC_ALL=C top -b -n2 -d 0.2 | grep "Cpu(s)" | tail -n1 | awk '{print $2+$4}')
+    
+    # Total online processors
+    local cpu_num_all_n
+    cpu_num_all_n=$(getconf _NPROCESSORS_ONLN)
+    
+    # Calculate used and free cores safely via bc, formatting to 0 decimal places
+    local cpu_num_all
+    cpu_num_all=$(echo "scale=5; $cpu_num_all_n - (($cpu_load / 100) * $cpu_num_all_n)" | bc)
+    
+    # Round down to the nearest integer safely
+    printf "%.0f\n" "$cpu_num_all"
+}
+
+
 
 #set -e
 
@@ -169,6 +198,17 @@ name_noext="${name_noext%.nii}"      # remove .nii if present
 ANTsprefix=${ANTs_outputs}/${name_noext}_${diffeopost}
 ANTsdiff=${ANTsprefix}"diff.nii.gz"
 ANTsinv=${ANTsprefix}"inv.nii.gz"
+
+# 1. Calculate free cores
+free_cores=$(estimateFreeCores)
+
+# 2. Fallback to 1 if the system is fully loaded
+if [ "$free_cores" -lt 1 ]; then
+    free_cores=1
+fi
+
+# 3. Set and export variables for the container
+setITKthreads "$free_cores"
 
 echo "    antsRegistration \
     -d 3 \
