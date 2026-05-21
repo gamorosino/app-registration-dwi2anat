@@ -164,7 +164,6 @@ mrconvert ${output_mif} ${output_nii} \
 python << EOF
 
 import numpy as np
-from scipy.linalg import polar
 
 # load bvecs
 bvecs = np.loadtxt("${tmp_bvecs}")
@@ -178,8 +177,9 @@ with open("${affine}", "r") as f:
 
 A = np.array(vals).reshape(3,3)
 
-# extract pure rotation
-R, _ = polar(A)
+# extract pure rotation from affine
+U, _, Vt = np.linalg.svd(A)
+R = np.dot(U, Vt)
 
 # rotate gradients
 bvecs_rot = np.dot(R, bvecs)
