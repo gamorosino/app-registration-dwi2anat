@@ -6,7 +6,7 @@
 ###################     title:                      Apply ANTs Warp/Affine to DWIs                    ###################
 ###################                                                                                   ###################
 ###################     description:    Script for applying warp/affine to DWI images                 ################### 
-###################     version:        0.0.0.0                                                       ###################
+###################     version:        0.0.2.0                                                       ###################
 ###################     notes:          Install MRtrix 3, ANTs, FSL to use this script                ###################
 ###################     bash version:   tested on GNU bash, version  4.2.53                           ###################
 ###################                                                                                   ###################
@@ -155,5 +155,48 @@ bvals_warped=$( remove_ext ${output_nii} ).bvals
 
 [ $( exists ${output_mif} ) -eq 0 ]  && { mrtransform ${moving_mif} ${output_mif} -warp mrtrix_warp_corrected.mif -force  -reorient_fod no ; } # -fslgrad  ${bvecs} ${bvals}  #-export_grad_fsl ${bvecs_warped} ${bvals_warped}
 
-( [ $( exists ${output_nii} ) -eq 0 ] || [ $( exists ${bvecs_warped} ) -eq 0 ] || [ $( exists ${bvals_warped} ) -eq 0 ] )  \
-						&& { mrconvert ${output_mif}  ${output_nii} -export_grad_fsl  ${bvecs_warped} ${bvals_warped} -force ; rm ${output_mif}; }
+tmp_bvecs=${bvecs_warped}.tmp
+
+mrconvert ${output_mif} ${output_nii} \
+    -export_grad_fsl ${tmp_bvecs} ${bvals_warped} \
+    -force
+
+python << EOF
+
+import numpy as np
+from scipy.linalg import polar
+
+# load bvecs
+bvecs = np.loadtxt("${tmp_bvecs}")
+
+# read affine matrix from ITK file
+A = []
+
+with open("${affine}", "r") as f:
+    for line in f:
+        if line.startswith("Parameters:"):
+            vals = list(map(float, line.split()[1:10]))
+            break
+
+A = np.array(vals).reshape(3,3)
+
+# extract pure rotation
+R, _ = polar(A)
+
+# rotate gradients
+bvecs_rot = R @ bvecs
+
+# normalize non-zero vectors
+norms = np.linalg.norm(bvecs_rot, axis=0)
+mask = norms > 1e-6
+bvecs_rot[:, mask] /= norms[mask]
+
+# save corrected gradients
+np.savetxt("${bvecs_warped}", bvecs_rot, fmt="%.10f")
+
+EOF
+
+rm ${tmp_bvecs}
+rm ${output_mif}
+
+
