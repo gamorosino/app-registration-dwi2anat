@@ -169,11 +169,16 @@ import numpy as np
 bvecs = np.loadtxt("${tmp_bvecs}")
 
 # read affine matrix from ITK file
+vals = None
+
 with open("${affine}", "r") as f:
     for line in f:
-        if line.startswith("Parameters:"):
-            vals = list(map(float, line.split()[1:10]))
+        if "Parameters:" in line:
+            vals = list(map(float, line.strip().split()[1:10]))
             break
+
+if vals is None:
+    raise RuntimeError("Could not find affine parameters in ITK transform file")
 
 A = np.array(vals).reshape(3,3)
 
