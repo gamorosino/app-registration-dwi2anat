@@ -161,30 +161,78 @@ mrconvert ${output_mif} ${output_nii} \
     -export_grad_fsl ${tmp_bvecs} ${bvals_warped} \
     -force
 
+echo "DEBUG affine path: ${affine}"
+ls -lh "${affine}"
+echo "DEBUG first lines of affine:"
+head -n 8 "${affine}"
+
+echo "DEBUG tmp_bvecs path: ${tmp_bvecs}"
+ls -lh "${tmp_bvecs}"
+head -n 3 "${tmp_bvecs}"
+
 python << EOF
 
 import numpy as np
+import os
+
+affine_path = "${affine}"
+bvecs_path = "${tmp_bvecs}"
+out_path = "${bvecs_warped}"
+
+print("Reading affine:", affine_path)
+print("Reading bvecs:", bvecs_path)
+print("Writing rotated bvecs:", out_path)
+
+if not os.path.exists(affine_path):
+    raise RuntimeError("Affine file does not exist: " + affine_path)
+
+if not os.path.exists(bvecs_path):
+    raise RuntimeError("Temporary bvecs file does not exist: " + bvecs_path)
 
 # load bvecs
-bvecs = np.loadtxt("${tmp_bvecs}")
+bvecs = np.loadtxt(bvecs_path)
 
-# read affine matrix from ITK file
+if bvecs.shape[0] != 3 and bvecs.shape[1] == 3:
+    bvecs = bvecs.T
+
+if bvecs.shape[0] != 3:
+    raise RuntimeError("Expected bvecs shape 3 x N, got: " + str(bvecs.shape))
+
+# read ITK affine
 vals = None
 
-with open("${affine}", "r") as f:
-    for line in f:
-        if "Parameters:" in line:
-            vals = list(map(float, line.strip().split()[1:10]))
-            break
+with open(affine_path, "r") as f:
+    txt = f.read()
+
+for line in txt.splitlines():
+    line_clean = line.strip()
+    if line_clean.startswith("Parameters:"):
+        parts = line_clean.split()
+        vals = [float(x) for x in parts[1:10]]
+        break
 
 if vals is None:
-    raise RuntimeError("Could not find affine parameters in ITK transform file")
+    print("Affine file content begins:")
+    print(txt[:1000])
+    raise RuntimeError("Could not find 'Parameters:' line in affine file")
 
-A = np.array(vals).reshape(3,3)
+A = np.array(vals).reshape(3, 3)
 
-# extract pure rotation from affine
-U, _, Vt = np.linalg.svd(A)
+print("Affine 3x3:")
+print(A)
+
+# extract pure rotation from affine using NumPy only
+U, s, Vt = np.linalg.svd(A)
 R = np.dot(U, Vt)
+
+# avoid improper rotation/reflection
+if np.linalg.det(R) < 0:
+    U[:, -1] *= -1
+    R = np.dot(U, Vt)
+
+print("Rotation matrix:")
+print(R)
+print("det(R):", np.linalg.det(R))
 
 # rotate gradients
 bvecs_rot = np.dot(R, bvecs)
@@ -192,13 +240,16 @@ bvecs_rot = np.dot(R, bvecs)
 # normalize non-zero vectors
 norms = np.linalg.norm(bvecs_rot, axis=0)
 mask = norms > 1e-6
-bvecs_rot[:, mask] /= norms[mask]
+bvecs_rot[:, mask] = bvecs_rot[:, mask] / norms[mask]
 
-# save corrected gradients
-np.savetxt("${bvecs_warped}", bvecs_rot, fmt="%.10f")
+# keep b0s exactly zero
+bvecs_rot[:, ~mask] = 0.0
+
+np.savetxt(out_path, bvecs_rot, fmt="%.10f")
+
+print("Done rotating bvecs")
 
 EOF
-
 rm ${tmp_bvecs}
 rm ${output_mif}
 
