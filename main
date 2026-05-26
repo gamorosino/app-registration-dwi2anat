@@ -264,5 +264,5 @@ singularity exec -e docker://brainlife/ants:2.2.0-1bc ConvertTransformFile 3 $Af
 outputdir=${SCRIPT_DIR}'/transformed'
 mkdir -p ${outputdir}
 dwi_output=${outputdir}'/'$( basename ${dwi} )
-singularity exec -e docker://brainlife/mrtrix3:3.0.3 \
+singularity exec -e docker://gamorosino/tract_align:v1.0 \
 bash ${applyWarp2DWI} ${dwi} ${bvals} ${bvecs} ${anat}  ${AffineMat}  ${WarpField} ${dwi_output}
