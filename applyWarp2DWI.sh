@@ -167,8 +167,7 @@ mkdir -p ./temp
 
 echo "Converting affine to plain text..."
 
-singularity exec -e docker://brainlife/ants:2.2.0-1bc \
-    ConvertTransformFile 3 \
+ConvertTransformFile 3 \
     ${affine} \
     ./temp/affine.txt
 
