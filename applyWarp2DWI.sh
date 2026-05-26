@@ -185,8 +185,8 @@ out_path = "${bvecs_warped}"
 
 print("Reading affine:", affine_path)
 print("Reading bvecs:", bvecs_path)
+print("Writing default output:", out_path)
 
-# load bvecs
 bvecs = np.loadtxt(bvecs_path)
 
 if bvecs.shape[0] != 3 and bvecs.shape[1] == 3:
@@ -195,13 +195,11 @@ if bvecs.shape[0] != 3 and bvecs.shape[1] == 3:
 if bvecs.shape[0] != 3:
     raise RuntimeError("Expected bvecs shape 3 x N, got: " + str(bvecs.shape))
 
-# read affine
 vals = None
 
 with open(affine_path, "r") as f:
     for line in f:
         line = line.strip()
-
         if line.startswith("Parameters:"):
             vals = [float(x) for x in line.split()[1:10]]
             break
@@ -209,37 +207,42 @@ with open(affine_path, "r") as f:
 if vals is None:
     raise RuntimeError("Could not find affine parameters")
 
-A = np.array(vals).reshape(3,3)
+A = np.array(vals).reshape(3, 3)
 
 print("Affine matrix:")
 print(A)
 
-# extract pure rotation
 U, s, Vt = np.linalg.svd(A)
 R = np.dot(U, Vt)
 
-# fix reflection if needed
 if np.linalg.det(R) < 0:
     U[:, -1] *= -1
     R = np.dot(U, Vt)
 
 print("Rotation matrix:")
 print(R)
+print("det(R):", np.linalg.det(R))
 
-# rotate bvecs
-bvecs_rot = np.dot(R, bvecs)
+def normalize_bvecs(B):
+    norms = np.linalg.norm(B, axis=0)
+    mask = norms > 1e-6
+    B[:, mask] /= norms[mask]
+    B[:, ~mask] = 0.0
+    return B
 
-# normalize
-norms = np.linalg.norm(bvecs_rot, axis=0)
-mask = norms > 1e-6
+bvecs_R  = normalize_bvecs(np.dot(R, bvecs))
+bvecs_RT = normalize_bvecs(np.dot(R.T, bvecs))
 
-bvecs_rot[:, mask] /= norms[mask]
-bvecs_rot[:, ~mask] = 0.0
+np.savetxt("./temp/rotated_R.bvecs",  bvecs_R,  fmt="%.10f")
+np.savetxt("./temp/rotated_RT.bvecs", bvecs_RT, fmt="%.10f")
 
-# save
-np.savetxt(out_path, bvecs_rot, fmt="%.10f")
+# default pipeline output for now
+np.savetxt(out_path, bvecs_R, fmt="%.10f")
 
-print("Rotated bvecs written to:", out_path)
+print("Saved:")
+print("./temp/rotated_R.bvecs")
+print("./temp/rotated_RT.bvecs")
+print("Pipeline bvecs written to:", out_path)
 
 EOF
 rm ${tmp_bvecs}
