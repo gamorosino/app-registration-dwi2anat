@@ -6,7 +6,7 @@
 ###################     title:                      Apply ANTs Warp/Affine to DWIs                    ###################
 ###################                                                                                   ###################
 ###################     description:    Script for applying warp/affine to DWI images                 ################### 
-###################     version:        0.0.0.0                                                       ###################
+###################     version:        0.0.2.0                                                       ###################
 ###################     notes:          Install MRtrix 3, ANTs, FSL to use this script                ###################
 ###################     bash version:   tested on GNU bash, version  4.2.53                           ###################
 ###################                                                                                   ###################
@@ -155,5 +155,97 @@ bvals_warped=$( remove_ext ${output_nii} ).bvals
 
 [ $( exists ${output_mif} ) -eq 0 ]  && { mrtransform ${moving_mif} ${output_mif} -warp mrtrix_warp_corrected.mif -force  -reorient_fod no ; } # -fslgrad  ${bvecs} ${bvals}  #-export_grad_fsl ${bvecs_warped} ${bvals_warped}
 
-( [ $( exists ${output_nii} ) -eq 0 ] || [ $( exists ${bvecs_warped} ) -eq 0 ] || [ $( exists ${bvals_warped} ) -eq 0 ] )  \
-						&& { mrconvert ${output_mif}  ${output_nii} -export_grad_fsl  ${bvecs_warped} ${bvals_warped} -force ; rm ${output_mif}; }
+tmp_bvecs=${bvecs_warped}.tmp
+
+mrconvert ${output_mif} ${output_nii} \
+    -export_grad_fsl ${tmp_bvecs} ${bvals_warped} \
+    -force
+
+echo "DEBUG affine path: ${affine}"
+
+mkdir -p ./temp
+
+echo "Converting affine to plain text..."
+
+ConvertTransformFile 3 \
+    ${affine} \
+    ./temp/affine.txt
+
+echo "DEBUG converted affine:"
+cat ./temp/affine.txt
+
+python << EOF
+
+import numpy as np
+import os
+
+affine_path = "./temp/affine.txt"
+bvecs_path = "${tmp_bvecs}"
+out_path = "${bvecs_warped}"
+
+print("Reading affine:", affine_path)
+print("Reading bvecs:", bvecs_path)
+print("Writing default output:", out_path)
+
+bvecs = np.loadtxt(bvecs_path)
+
+if bvecs.shape[0] != 3 and bvecs.shape[1] == 3:
+    bvecs = bvecs.T
+
+if bvecs.shape[0] != 3:
+    raise RuntimeError("Expected bvecs shape 3 x N, got: " + str(bvecs.shape))
+
+vals = None
+
+with open(affine_path, "r") as f:
+    for line in f:
+        line = line.strip()
+        if line.startswith("Parameters:"):
+            vals = [float(x) for x in line.split()[1:10]]
+            break
+
+if vals is None:
+    raise RuntimeError("Could not find affine parameters")
+
+A = np.array(vals).reshape(3, 3)
+
+print("Affine matrix:")
+print(A)
+
+U, s, Vt = np.linalg.svd(A)
+R = np.dot(U, Vt)
+
+if np.linalg.det(R) < 0:
+    U[:, -1] *= -1
+    R = np.dot(U, Vt)
+
+print("Rotation matrix:")
+print(R)
+print("det(R):", np.linalg.det(R))
+
+def normalize_bvecs(B):
+    norms = np.linalg.norm(B, axis=0)
+    mask = norms > 1e-6
+    B[:, mask] /= norms[mask]
+    B[:, ~mask] = 0.0
+    return B
+
+bvecs_R  = normalize_bvecs(np.dot(R, bvecs))
+bvecs_RT = normalize_bvecs(np.dot(R.T, bvecs))
+
+np.savetxt("./temp/rotated_R.bvecs",  bvecs_R,  fmt="%.10f")
+np.savetxt("./temp/rotated_RT.bvecs", bvecs_RT, fmt="%.10f")
+
+# default pipeline output for now
+np.savetxt(out_path, bvecs_R, fmt="%.10f")
+
+print("Saved:")
+print("./temp/rotated_R.bvecs")
+print("./temp/rotated_RT.bvecs")
+print("Pipeline bvecs written to:", out_path)
+
+EOF
+rm ${tmp_bvecs}
+rm ${output_mif}
+
+
