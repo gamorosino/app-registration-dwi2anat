@@ -2,7 +2,7 @@
 #PBS -l nodes=1:ppn=1,vmem=8g,walltime=2:00:00
 #PBS -N app-registration-dwi2anat
 #PBS -V
-CONTAINER_IMAGE="docker://gamorosino/tract_align:v1.0"
+CONTAINER_IMAGE="docker://gamorosino/tract_align:v1.1"
 # functions
 
 run_in_env() {
@@ -59,6 +59,7 @@ t2w=$(jq -r .t2 config.json)
 parc=$(jq -r .parc config.json)
 mask=$(jq -r .mask config.json)
 fa=$(jq -r .fa config.json)
+qc_wm=$(jq -r '.qc_wm // false' config.json)
 
 # === Assign first available anatomical reference ===
 if [ -n "$t1w" ] && [ "$t1w" != "null" ]; then
@@ -270,4 +271,12 @@ singularity exec -e docker://brainlife/ants:2.2.0-1bc ConvertTransformFile 3 $Af
 outputdir=${SCRIPT_DIR}'/transformed'
 mkdir -p ${outputdir}
 dwi_output=${outputdir}'/'$( basename ${dwi} )
-run_in_env bash ${applyWarp2DWI} ${dwi} ${bvals} ${bvecs} ${anat}  ${AffineMat}  ${WarpField} ${dwi_output}
+run_in_env bash ${applyWarp2DWI} ${dwi} ${bvals} ${bvecs} ${anat}  ${AffineMat}  ${WarpField} ${dwi_output} "${compute_DT_Scalars}" "" "${qc_wm}"
+
+### === Generate brainlife product.json and figures manifest ===
+
+echo "Generating product.json ..."
+bash "${SCRIPT_DIR}/generate_product_json.sh" --compress "${SCRIPT_DIR}/QC" "${SCRIPT_DIR}/product.json"
+
+bash "${SCRIPT_DIR}/generate_figures_manifest.sh" "${SCRIPT_DIR}/QC" "${SCRIPT_DIR}"
+echo "Registration QC complete."
